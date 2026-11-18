@@ -105,7 +105,7 @@ def generate_website(provider: str, api_key: str, user_prompt: str, max_attempts
         raise ValueError("max_attempts phải là số nguyên dương.")
 
     providers = {
-        "gemini": "gemini/gemini-1.5-flash",
+        "gemini": "gemini/gemini-3.8-flash",
         "openai": "gpt-4o-mini",
         "groq": "groq/llama3-8b-8192",
     }

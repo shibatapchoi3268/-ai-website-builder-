@@ -58,7 +58,7 @@ class CoreEngineTests(unittest.TestCase):
             self.assertEqual(result, VALID_HTML)
             self.assertEqual(crew.return_value.kickoff.call_count, 2)
             llm.assert_called_once_with(
-                model="gemini/gemini-1.5-flash",
+                model="gemini/gemini-3.8-flash",
                 api_key="request-key",
             )
             self.assertEqual(os.environ["GEMINI_API_KEY"], "existing-process-key")
