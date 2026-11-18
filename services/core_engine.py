@@ -1,9 +1,11 @@
 import re
 import shutil
 import subprocess
+import time
 from html.parser import HTMLParser
 
 from crewai import Agent, Crew, LLM, Process, Task
+from google.genai.errors import APIError
 
 
 class _HTMLInspector(HTMLParser):
@@ -92,6 +94,28 @@ def _validate_html(code: str) -> list:
     return issues
 
 
+def _kickoff_with_503_retry(crew: Crew):
+    for attempt in range(2):
+        try:
+            return crew.kickoff()
+        except APIError as error:
+            if error.code != 503 or attempt == 1:
+                raise
+            time.sleep(2)
+
+    raise RuntimeError("Gemini retry loop ended without a result.")
+
+
+def _create_coder_agent(model: str, api_key: str) -> Agent:
+    return Agent(
+        role="Senior Web Developer",
+        goal="Viết và tự kiểm tra mã website HTML/CSS/JavaScript hoàn chỉnh, responsive",
+        backstory="Bạn là lập trình viên web giàu kinh nghiệm, ưu tiên mã chạy được và đáp ứng đúng yêu cầu.",
+        llm=LLM(model=model, api_key=api_key),
+        verbose=True,
+    )
+
+
 def generate_website(provider: str, api_key: str, user_prompt: str, max_attempts: int = 3) -> str:
     """Generate a single-file website and return it only after validation."""
     provider = provider.strip().lower()
@@ -105,23 +129,18 @@ def generate_website(provider: str, api_key: str, user_prompt: str, max_attempts
         raise ValueError("max_attempts phải là số nguyên dương.")
 
     providers = {
-        "gemini": "gemini/gemini-3.8-flash",
-        "openai": "gpt-4o-mini",
-        "groq": "groq/llama3-8b-8192",
+        "gemini": ("gemini/gemini-3.8-flash", "gemini/gemini-3.6-flash"),
+        "openai": ("gpt-4o-mini",),
+        "groq": ("groq/llama3-8b-8192",),
     }
     if provider not in providers:
         raise ValueError(f"Hệ thống chưa hỗ trợ nhà cung cấp: {provider}")
 
-    coder_agent = Agent(
-        role="Senior Web Developer",
-        goal="Viết và tự kiểm tra mã website HTML/CSS/JavaScript hoàn chỉnh, responsive",
-        backstory="Bạn là lập trình viên web giàu kinh nghiệm, ưu tiên mã chạy được và đáp ứng đúng yêu cầu.",
-        llm=LLM(model=providers[provider], api_key=api_key),
-        verbose=True,
-    )
-
     previous_code = ""
     issues = []
+    models = providers[provider]
+    model_index = 0
+    coder_agent = _create_coder_agent(models[model_index], api_key)
     for attempt in range(1, max_attempts + 1):
         if attempt == 1:
             description = (
@@ -138,18 +157,32 @@ def generate_website(provider: str, api_key: str, user_prompt: str, max_attempts
                 "không giải thích."
             )
 
-        task = Task(
-            description=description,
-            expected_output="Toàn bộ mã HTML hoàn chỉnh, không có nội dung ngoài mã.",
-            agent=coder_agent,
-        )
-        crew = Crew(
-            agents=[coder_agent],
-            tasks=[task],
-            process=Process.sequential,
-            verbose=True,
-        )
-        result = crew.kickoff()
+        while True:
+            task = Task(
+                description=description,
+                expected_output="Toàn bộ mã HTML hoàn chỉnh, không có nội dung ngoài mã.",
+                agent=coder_agent,
+            )
+            crew = Crew(
+                agents=[coder_agent],
+                tasks=[task],
+                process=Process.sequential,
+                verbose=True,
+            )
+            try:
+                result = _kickoff_with_503_retry(crew)
+                break
+            except APIError as error:
+                if error.code != 503:
+                    raise
+                if model_index == len(models) - 1:
+                    raise RuntimeError(
+                        "Gemini đang quá tải. Hệ thống đã thử lại và chuyển sang "
+                        "Gemini 3.6 Flash nhưng dịch vụ vẫn chưa khả dụng. "
+                        "Vui lòng đợi một lúc rồi thử lại."
+                    ) from error
+                model_index += 1
+                coder_agent = _create_coder_agent(models[model_index], api_key)
         raw_code = getattr(result, "raw", result)
         if not isinstance(raw_code, str):
             raise TypeError("AI trả về kết quả không phải văn bản.")

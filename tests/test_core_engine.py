@@ -2,8 +2,9 @@ import os
 import shutil
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, call, patch
 
+from google.genai.errors import APIError
 from services.core_engine import _strip_code_fence, _validate_html, generate_website
 
 
@@ -76,6 +77,53 @@ class CoreEngineTests(unittest.TestCase):
         crew.return_value.kickoff.return_value = SimpleNamespace(raw="<p>invalid</p>")
         with self.assertRaisesRegex(RuntimeError, "sau 2 lần thử"):
             generate_website("groq", "test-key", "Create a page", max_attempts=2)
+
+    @patch("services.core_engine.time.sleep")
+    @patch("services.core_engine.LLM")
+    @patch("services.core_engine.Agent")
+    @patch("services.core_engine.Task")
+    @patch("services.core_engine.Crew")
+    def test_retries_503_then_uses_gemini_fallback(
+        self, crew, task, agent, llm, sleep
+    ):
+        primary_crew = SimpleNamespace(
+            kickoff=Mock(
+                side_effect=[
+                    APIError(503, {"error": {"message": "temporarily unavailable"}}),
+                    APIError(503, {"error": {"message": "temporarily unavailable"}}),
+                ]
+            )
+        )
+        fallback_crew = SimpleNamespace(
+            kickoff=Mock(return_value=SimpleNamespace(raw=VALID_HTML))
+        )
+        crew.side_effect = [primary_crew, fallback_crew]
+
+        result = generate_website("gemini", "test-key", "Create a page")
+
+        self.assertEqual(result, VALID_HTML)
+        self.assertEqual(
+            [entry.kwargs["model"] for entry in llm.call_args_list],
+            ["gemini/gemini-3.8-flash", "gemini/gemini-3.6-flash"],
+        )
+        self.assertEqual(sleep.call_args_list, [call(2)])
+
+    @patch("services.core_engine.time.sleep")
+    @patch("services.core_engine.LLM")
+    @patch("services.core_engine.Agent")
+    @patch("services.core_engine.Task")
+    @patch("services.core_engine.Crew")
+    def test_reports_503_if_primary_and_fallback_are_unavailable(
+        self, crew, task, agent, llm, sleep
+    ):
+        unavailable = APIError(503, {"error": {"message": "temporarily unavailable"}})
+        crew.side_effect = [
+            SimpleNamespace(kickoff=Mock(side_effect=[unavailable, unavailable])),
+            SimpleNamespace(kickoff=Mock(side_effect=[unavailable, unavailable])),
+        ]
+
+        with self.assertRaisesRegex(RuntimeError, "Gemini đang quá tải"):
+            generate_website("gemini", "test-key", "Create a page")
 
     def test_rejects_empty_prompt_before_calling_provider(self):
         with self.assertRaisesRegex(ValueError, "yêu cầu"):

@@ -52,7 +52,10 @@ if st.button("✨ Bắt đầu tạo Website", type="primary"):
     elif not user_prompt:
         st.error("⚠️ Vui lòng nhập yêu cầu trang web của bạn!")
     else:
-        with st.spinner("AI đang viết, kiểm tra và tự sửa mã nếu cần... ☕"):
+        with st.spinner(
+            "AI đang viết và kiểm tra mã; nếu Gemini quá tải, hệ thống sẽ thử lại "
+            "và chuyển model dự phòng... ☕"
+        ):
             try:
                 html_code = generate_website(
                     provider=provider_ids[provider],

@@ -19,6 +19,8 @@ selected AI provider. Use only a deployment you trust.
 Dependencies are installed from `requirements.txt`. The MCP server is a
 separate local integration; it is not required to use the deployed Streamlit
 website.
+The Gemini provider retries a temporary 503 once, then tries Gemini 3.6 Flash
+if Gemini 3.8 Flash remains unavailable.
 
 The source code is public in the selected GitHub repository. Publishing the
 running app still requires signing in to Streamlit Community Cloud and creating
