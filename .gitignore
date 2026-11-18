@@ -1,7 +1,17 @@
 .env
 .env.*
+.envrc
 .streamlit/secrets.toml
+*.key
+*.pem
+*.p12
+*.pfx
+*.ppk
+.npmrc
+.pypirc
+credentials.json
 __pycache__/
 *.py[cod]
 .venv/
 venv/
+.deploy_backups/
