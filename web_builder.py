@@ -1,78 +1,83 @@
 import streamlit as st
-from services.core_engine import generate_website
 
-# Cấu hình giao diện trang web
-st.set_page_config(page_title="AI Web Builder Agent", page_icon="🚀", layout="wide")
+from services.research_engine import ResearchAnswer, research
 
-st.title("🚀 Hệ Thống Đa Tác Nhân (Multi-Agent Web Builder)")
-st.markdown("Nhập ý tưởng của bạn, AI sẽ tự động viết code HTML/CSS/JS cho bạn.")
 
-# ==========================================
-# GIAO DIỆN THANH BÊN (SIDEBAR) - CẤU HÌNH API
-# ==========================================
-with st.sidebar:
-    st.header("⚙️ Cấu hình AI Model")
-
-    # 1. Cho người dùng chọn Model
-    provider = st.selectbox(
-        "Chọn nhà cung cấp AI:",
-        ["Google Gemini", "OpenAI (ChatGPT)", "Groq"]
-    )
-
-    # 2. Ô nhập API Key
-    user_api_key = st.text_input("Nhập API Key của bạn:", type="password")
-
-    st.markdown("---")
-    st.info(
-        "API key được xử lý trong phiên này để gửi yêu cầu đến nhà cung cấp AI. "
-        "Ứng dụng không lưu key vào mã nguồn hoặc tệp cấu hình."
-    )
-
-provider_ids = {
-    "Google Gemini": "gemini",
-    "OpenAI (ChatGPT)": "openai",
-    "Groq": "groq",
-}
-
-# ==========================================
-# GIAO DIỆN CHÍNH - NHẬP YÊU CẦU & KẾT QUẢ
-# ==========================================
-user_prompt = st.text_area(
-    "Bạn muốn làm trang web như thế nào?",
-    height=150,
-    placeholder="Ví dụ: Tạo một trang web bán đồng hồ thông minh với giao diện màu đen sang trọng..."
+st.set_page_config(page_title="AI Research Chat", page_icon="🔎")
+st.title("🔎 AI Research Chat")
+st.caption(
+    "Hỏi đáp tự nhiên với Gemini. Khi cần thông tin trên web, Gemini có thể "
+    "tìm kiếm và hiển thị các nguồn tham khảo."
 )
 
-# Nút Bấm Thực Thi
-if st.button("✨ Bắt đầu tạo Website", type="primary"):
+with st.sidebar:
+    st.header("Cấu hình Gemini")
+    api_key = st.text_input("Gemini API key", type="password")
+    st.caption("Key chỉ được dùng trong phiên này và gửi đến Google Gemini.")
+    if st.button("Xóa cuộc trò chuyện"):
+        st.session_state.messages = []
+        st.rerun()
 
-    # Kiểm tra xem người dùng đã nhập API Key chưa
-    if not user_api_key:
-        st.error("⚠️ Vui lòng nhập API Key ở thanh bên trái trước khi bắt đầu!")
-    elif not user_prompt:
-        st.error("⚠️ Vui lòng nhập yêu cầu trang web của bạn!")
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+
+def _show_sources(answer: ResearchAnswer) -> None:
+    if answer.sources:
+        st.caption("Nguồn tham khảo")
+        for source in answer.sources:
+            st.link_button(source.title, source.url)
+
+
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        if message.get("error"):
+            st.error(message["content"])
+        else:
+            st.markdown(message["content"])
+            for source in message.get("sources", []):
+                st.link_button(source["title"], source["url"])
+
+prompt = st.chat_input("Bạn muốn tìm hiểu điều gì?")
+if prompt:
+    previous_messages = [
+        {"role": item["role"], "content": item["content"]}
+        for item in st.session_state.messages
+        if not item.get("error")
+    ]
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    if not api_key.strip():
+        error_message = "Vui lòng nhập Gemini API key trong thanh bên trước khi gửi câu hỏi."
+        st.session_state.messages.append(
+            {"role": "assistant", "content": error_message, "error": True}
+        )
+        with st.chat_message("assistant"):
+            st.error(error_message)
     else:
-        with st.spinner(
-            "AI đang viết và kiểm tra mã; nếu Gemini quá tải, hệ thống sẽ thử lại "
-            "và chuyển model dự phòng... ☕"
-        ):
+        with st.chat_message("assistant"):
             try:
-                html_code = generate_website(
-                    provider=provider_ids[provider],
-                    api_key=user_api_key,
-                    user_prompt=user_prompt,
+                with st.spinner("Gemini đang suy nghĩ và tìm kiếm thông tin..."):
+                    answer = research(prompt, api_key, previous_messages)
+            except RuntimeError as error:
+                error_message = str(error)
+                st.session_state.messages.append(
+                    {"role": "assistant", "content": error_message, "error": True}
                 )
-                st.success("✅ Mã đã vượt qua các bước kiểm tra tự động:")
-                st.caption(
-                    "Kiểm tra cấu trúc HTML và cú pháp JavaScript nếu Node.js có sẵn; "
-                    "mã được tạo không chạy trên máy chủ."
+                st.error(error_message)
+            else:
+                sources = [
+                    {"title": source.title, "url": source.url}
+                    for source in answer.sources
+                ]
+                st.session_state.messages.append(
+                    {
+                        "role": "assistant",
+                        "content": answer.text,
+                        "sources": sources,
+                    }
                 )
-                st.code(html_code, language="html")
-                st.download_button(
-                    label="📥 Tải file index.html",
-                    data=html_code,
-                    file_name="index.html",
-                    mime="text/html",
-                )
-            except Exception as error:
-                st.error(f"❌ Không thể tạo mã website: {error}")
+                st.markdown(answer.text)
+                _show_sources(answer)

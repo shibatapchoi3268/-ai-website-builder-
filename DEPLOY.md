@@ -1,9 +1,10 @@
-# Deploy the website app
+# Deploy the research chat
 
-The Streamlit app is `web_builder.py`. It asks each visitor for their own AI
-provider and API key; no provider key is needed in Streamlit Cloud's Secrets.
-The key is sent to this app's server for the request and forwarded to the
-selected AI provider. Use only a deployment you trust.
+The Streamlit app is `web_builder.py`. It provides a Gemini-powered chat and
+uses Gemini's native Google Search grounding for web research and source links.
+Each visitor enters their own Gemini API key; no key is needed in Streamlit
+Cloud's Secrets. The key is sent to this app's server for the request and
+forwarded to Google. Use only a deployment you trust.
 
 ## Deploy on Streamlit Community Cloud
 
@@ -13,13 +14,12 @@ selected AI provider. Use only a deployment you trust.
    GitHub and choose **Create app**.
 3. Select the repository and branch, set **Main file path** to `web_builder.py`,
    then deploy.
-4. Open the deployed app URL. Visitors select their AI provider and enter their
-   own API key in the sidebar.
+4. Open the deployed app URL. Visitors enter their Gemini API key in the
+   sidebar, then ask questions in the chat.
 
 Dependencies are installed from `requirements.txt`. The MCP server is a
 separate local integration; it is not required to use the deployed Streamlit
-website.
-The Gemini provider retries a temporary 503 once, then tries Gemini 3.6 Flash
+app. The chat retries a temporary Gemini 503 once, then tries Gemini 3.6 Flash
 if Gemini 3.8 Flash remains unavailable.
 
 The source code is public in the selected GitHub repository. Publishing the
@@ -31,9 +31,8 @@ the app there.
 The Streamlit Cloud app cannot read files from your PC or connect with local
 credentials. Run the SFTP helper on your own computer instead:
 
-Download the generated `index.html` from the web app and place it in a local
-project folder. Add any CSS, JavaScript, or asset files that project needs to
-that folder, then run:
+Prepare a local website project folder containing its `index.html` and any
+required CSS, JavaScript, or asset files, then run:
 
 ```powershell
 python -m pip install -r requirements-sftp.txt
